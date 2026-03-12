@@ -1,66 +1,89 @@
 # Hướng dẫn sử dụng Hệ thống Camnhandien
 
-Dưới đây là các bước để cài đặt môi trường và sử dụng hai phần của hệ thống: **Nhận diện biển số (Core)** và **Ứng dụng quản lý bãi xe (GUI)**.
+Dưới đây là các bước để cài đặt môi trường từ đầu (cho máy tính chưa có cài đặt gì) và sử dụng hệ thống: **Nhận diện biển số (Core)** và **Ứng dụng quản lý bãi xe (GUI)**.
 
 ---
 
 ## 🛠 1. Chuẩn bị môi trường (Bắt buộc)
 
-Trước khi chạy bất kỳ phần nào, bạn cần thực hiện các bước sau:
+Trước khi chạy, máy tính của bạn cần được cài đặt Python (phiên bản chuẩn có hỗ trợ giao diện Tkinter) và các thư viện cần thiết. Hãy mở terminal (Command Prompt, PowerShell hoặc Git Bash) bằng quyền Quản trị viên (Run as Administrator) và thực hiện các bước sau:
 
-1. **Di chuyển vào thư mục dự án**:
+1. **Cài đặt Python chuẩn (Nếu máy chưa có)**:
+   Mở PowerShell hoặc Command Prompt và chạy lệnh dưới đây (chờ terminal tải và cài đặt xong):
+   ```bash
+   winget install --id Python.Python.3.11 --accept-package-agreements --accept-source-agreements
+   ```
+   *Lưu ý: Nếu máy bạn đã cài Python đầy đủ từ `python.org` thì có thể bỏ qua bước này. Sau khi cài đặt, hãy khởi động lại terminal để hệ thống nhận diện được lệnh `python` mới cài.*
+
+2. **Di chuyển vào thư mục dự án**:
+   Mở terminal Bash/CMD mới và gõ lệnh để đi đến thư mục chứa code của bạn:
+   phải cd vào thư mục Camnhandien
    ```bash
    cd Camnhandien
    ```
 
-2. **Thiết lập môi trường ảo (venv)**:
+4. **Thiết lập môi trường ảo (venv)**:
+   Môi trường ảo giúp chạy mã nguồn mà không ảnh hưởng tới hệ thống.
    ```bash
-   python -m venv venv
+   python -m venv venv  
+   ```
+   Nếu không chạy được lệnh trên thì chạy lệnh này
+   ```bash
+   py -m venv venv
    ```
 
-3. **Kích hoạt môi trường ảo**:
-   ```bash
-   .\venv\Scripts\activate
-   ```
+5. **Kích hoạt môi trường ảo**:
+   - Trên **Windows CMD / PowerShell**:
+     ```bash
+     .\venv\Scripts\activate
+     ```
+   - Trên **Git Bash**:
+     ```bash
+     source venv/Scripts/activate
+     ```
 
-4. **Cài đặt thư viện**:
+6. **Cài đặt thư viện AI**:
+   Khi dòng lệnh có chữ `(venv)` ở đầu, hãy chạy lệnh cài đặt:
    ```bash
    pip install opencv-python easyocr imutils numpy Pillow
    ```
+   *(Quá trình này sẽ mất một lúc do phải tải các module nền tảng cần thiết như PyTorch và OpenCV).*
 
 ---
 
-## 📸 PHẦN 1: Chạy Nhận diện & Xử lý Ảnh (main.py)
+## 🚀 2. Khởi chạy Ứng dụng
 
-Phần này dùng để kiểm tra khả năng nhận diện biển số từ ảnh, cắt biển số và lưu dữ liệu thô vào CSV.
+Sau khi đã hoàn tất cài đặt môi trường `venv`, bạn có hai lựa chọn để chạy phần mềm. Các lệnh dưới đây sử dụng đường dẫn Python trực tiếp trong môi trường ảo của dự án (`venv`) để đảm bảo các lỗi về thư viện không xảy ra.
 
-**Để khởi chạy:**
+### Lựa chọn 1: Chạy đồng thời cả 2 màn hình bằng 1 lệnh (Git Bash)
+Nếu bạn đang sử dụng Git Bash, bạn có thể mở cả ứng dụng xử lý ảnh (`main.py`) và ứng dụng quản lý bãi xe (`parking_app.py`) chỉ với một dòng lệnh ở thư mục dự án:
 ```bash
-python main.py
+./venv/Scripts/python.exe main.py & ./venv/Scripts/python.exe parking_app.py
 ```
 
-- **Chức năng**: Quét các ảnh trong thư mục, phát hiện vùng chứa biển số, dùng EasyOCR để đọc chữ và lưu kết quả vào file CSV.
-- **Dữ liệu đầu ra**: Các ảnh biển số đã cắt được lưu trong thư mục `plates/`.
+### Lựa chọn 2: Chạy riêng biệt từng ứng dụng (Mở 2 terminal khác nhau)
+Mở 2 cửa sổ PowerShell / CMD và vẫn đứng ở thư mục `Camnhandien`:
+
+- **Terminal 1: Chạy Nhận diện & Xử lý Ảnh (`main.py`)**  
+  Kiểm tra khả năng nhận diện biển số thô, cắt biển số và lưu dữ liệu nền.
+  ```bash
+  .\venv\Scripts\python.exe main.py
+  ```
+
+- **Terminal 2: Chạy Quản lý Bãi xe (`parking_app.py`)**  
+  Khởi động GUI ứng dụng hoàn chỉnh để người dùng theo dõi và thao tác.
+  ```bash
+  .\venv\Scripts\python.exe parking_app.py
+  ```
 
 ---
 
-## 🚗 PHẦN 2: Chạy Ứng dụng Quản lý Bãi xe (parking_app.py)
-
-Đây là ứng dụng đầy đủ với giao diện người dùng, quản lý tài khoản, ví điện tử và lịch sử gửi xe.
-
-**Để khởi chạy:**
-```bash
-python parking_app.py
-```
-
-### Các tính năng chính:
+## ℹ Các tính năng chính của Parking App:
 - **Trang chủ**: Thực hiện Quét xe vào (IN) và Xe ra (OUT). Tích hợp trừ tiền tự động từ ví.
-- **Tra cứu**: Nhập biển số để xem lịch sử hành trình. Hỗ trợ tính năng **Lướt (Swipe)** bảng để xem chi tiết ghi chú số dư.
-- **Tài khoản**: Đăng ký/Đăng nhập để liên kết biển số xe và quản lý số dư ví.
+- **Tra cứu**: Nhập biển số để xem lịch sử hành trình. Hỗ trợ tính năng **Lướt (Swipe)** bằng chuột trên danh sách để xem chi tiết ghi chú.
+- **Tài khoản**: Đăng ký/Đăng nhập (bằng biển số) để liên kết phương tiện và nạp tiền/quản lý ví.
 
-### Cấu trúc dữ liệu liên quan:
-- `parking_data.json`: Lưu thông tin tài khoản, ví và lịch sử.
-- `parking_sessions/`: Lưu ảnh xe lúc vào/ra để đối chiếu.
-
----
-*Lưu ý: Nếu lệnh `python` không hoạt động, hãy thử thay bằng `py`.*
+### Cấu trúc file và dữ liệu lưu trữ sinh ra:
+- `parking_data.json`: Lưu thông tin tài khoản, số dư ví và toàn bộ lịch sử sử dụng hệ thống.
+- `parking_sessions/`: Lưu ảnh xe lúc Vào / Ra để dễ dàng kiểm tra đối chứng khi kiểm soát bãi.
+- `plates/`: Lưu các ảnh đã cắt tự động vùng chứa biển số để debug.
