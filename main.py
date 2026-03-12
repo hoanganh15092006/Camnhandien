@@ -5,7 +5,7 @@ import numpy as np
 import re
 import os
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 from PIL import Image, ImageTk
 import threading
 import queue
@@ -310,6 +310,7 @@ class LicensePlateApp:
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.cam_index = 0
+        self.ip_cam_url = None
         self.available_cams = []       # populated by scan thread
         self._cam_lock = threading.Lock()
         self._cap = None               # only touched by capture thread
@@ -499,6 +500,8 @@ class LicensePlateApp:
                     label = f"Camera {idx}" + (" (tích hợp)" if idx == 0 else f" (USB #{idx})")
                     found.append((idx, label))
                 test.release()
+        
+        found.append((-1, "📱 IP Camera (Điện thoại)"))
         self.root.after(0, lambda: self._on_cameras_found(found))
 
     def _on_cameras_found(self, found):
@@ -517,11 +520,11 @@ class LicensePlateApp:
     # Runs in a dedicated thread. Reads frames as fast as possible,
     # puts them into _display_queue (for UI) and _ocr_queue (for OCR thread).
 
-    def _open_camera(self, idx):
+    def _open_camera(self, idx, ip_url=None):
         """Open a new camera in background, then start capture + OCR threads."""
         self._stop_capture.set()   # stop old capture thread if any
         self._stop_ocr.set()       # stop old OCR thread if any
-        self.root.after(0, lambda: self.status_var.set(f"Đang mở camera {idx}..."))
+        self.root.after(0, lambda: self.status_var.set(f"Đang mở camera {'IP' if idx == -1 else idx}..."))
 
         def worker():
             # Wait briefly so old threads see the stop event
@@ -530,7 +533,10 @@ class LicensePlateApp:
             with self._cam_lock:
                 if self._cap is not None:
                     self._cap.release()
-                cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+                if ip_url is not None:
+                    cap = cv2.VideoCapture(ip_url)
+                else:
+                    cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
                 cap.set(cv2.CAP_PROP_FPS, 30)
@@ -539,7 +545,7 @@ class LicensePlateApp:
 
             if not cap.isOpened():
                 self.root.after(0, lambda: messagebox.showerror(
-                    "Lỗi camera", f"Không thể mở camera {idx}."))
+                    "Lỗi camera", f"Không thể mở camera {'địa chỉ IP' if idx == -1 else idx}."))
                 return
 
             self.cam_index = idx
@@ -781,6 +787,21 @@ class LicensePlateApp:
             return
         selected_label = self.cam_combo_var.get()
         new_index = next((i for i, lbl in self.available_cams if lbl == selected_label), None)
+        
+        if new_index == -1:
+            url = simpledialog.askstring("Nhập địa chỉ IP Camera", 
+                                         "Nhập URL stream từ điện thoại (vd: http://192.168.1.5:8080/video):", 
+                                         parent=self.root)
+            if url:
+                self.ip_cam_url = url
+                self.status_var.set("⏳  Đang kết nối IP camera...")
+                self._open_camera(-1, ip_url=url)
+            else:
+                # Reset combobox to previous value if cancelled
+                btn = next((lbl for i, lbl in self.available_cams if i == self.cam_index), "...")
+                self.cam_combo_var.set(btn)
+            return
+
         if new_index is None or new_index == self.cam_index:
             return
         self.status_var.set("⏳  Đang chuyển camera...")

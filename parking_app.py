@@ -47,6 +47,14 @@ class ParkingDB:
         if "active_sessions" not in self.data: self.data["active_sessions"] = {}
         if "accounts" not in self.data: self.data["accounts"] = {}
         if "owned_plates" not in self.data: self.data["owned_plates"] = {}
+        if "camera_settings" not in self.data: self.data["camera_settings"] = {"cam_index": 0, "ip_cam_url": ""}
+
+    def get_camera_settings(self):
+        return self.data.get("camera_settings", {"cam_index": 0, "ip_cam_url": ""})
+
+    def save_camera_settings(self, cam_index, ip_cam_url):
+        self.data["camera_settings"] = {"cam_index": cam_index, "ip_cam_url": ip_cam_url}
+        self.save()
 
     def save(self):
         with open(DB_FILE, "w", encoding="utf-8") as f:
@@ -152,7 +160,9 @@ class MobileParkingApp:
         
         # Scanner thread state
         self.reader = None
-        self.cam_index = 0
+        settings = self.db.get_camera_settings()
+        self.cam_index = settings.get("cam_index", 0)
+        self.ip_cam_url = settings.get("ip_cam_url", "")
         self._cap = None
         self._ocr_queue = queue.Queue(maxsize=1)
         self._result_queue = queue.Queue(maxsize=8)
@@ -574,17 +584,42 @@ class MobileParkingApp:
         
         tk.Button(btn_frame, text="✖ Hủy", command=self.close_scanner, font=("Segoe UI", 12), bg="#f38ba8").pack(side="left", padx=10)
         tk.Button(btn_frame, text="⌨ Nhập tay", command=self.manual_override, font=("Segoe UI", 12), bg="#89b4fa").pack(side="left", padx=10)
+        tk.Button(btn_frame, text="💻 PC Cam", command=self._switchToPCWebcam, font=("Segoe UI", 12), bg="#a6e3a1").pack(side="left", padx=10)
+        tk.Button(btn_frame, text="📱 IP Cam", command=self._switchToIPCam, font=("Segoe UI", 12), bg="#fab387").pack(side="left", padx=10)
 
         self.scan_win.protocol("WM_DELETE_WINDOW", self.close_scanner)
         
         self._start_camera()
 
+    def _switchToPCWebcam(self):
+        self.cam_index = 0
+        self.db.save_camera_settings(self.cam_index, self.ip_cam_url)
+        self.status_var.set("⏳ Đang kết nối Webcam PC...")
+        self._start_camera()
+
+    def _switchToIPCam(self):
+        url = simpledialog.askstring("Nhập địa chỉ IP Camera", 
+                                     "Nhập URL stream từ điện thoại (vd: http://192.168.1.5:8080/video):", 
+                                     parent=self.scan_win, initialvalue=self.ip_cam_url)
+        if url:
+            self.ip_cam_url = url
+            self.cam_index = -1
+            self.db.save_camera_settings(self.cam_index, self.ip_cam_url)
+            self.status_var.set("⏳ Đang kết nối IP camera...")
+            self._start_camera()
+
     def _start_camera(self):
+        self._stop_capture.set()
+        self._stop_ocr.set()
+        import time; time.sleep(0.15)
         self._stop_capture.clear()
         self._stop_ocr.clear()
         
         def worker():
-            cap = cv2.VideoCapture(self.cam_index, cv2.CAP_DSHOW)
+            if self.cam_index == -1 and self.ip_cam_url:
+                cap = cv2.VideoCapture(self.ip_cam_url)
+            else:
+                cap = cv2.VideoCapture(self.cam_index, cv2.CAP_DSHOW)
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             self._cap = cap
