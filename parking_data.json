@@ -1,16 +1,44 @@
 {
     "balances": {
         "63-S 000.06": 0,
-        "68-E 000.07": 64999
+        "68-E 000.07": 64999,
+        "anh": 7345
     },
     "active_sessions": {},
-    "accounts": {},
-    "owned_plates": {},
+    "accounts": {
+        "anh": "123"
+    },
+    "owned_plates": {
+        "anh": [
+            "66-L1 405.88"
+        ]
+    },
     "camera_settings": {
         "cam_index": 0,
         "ip_cam_url": ""
     },
     "history": [
+        {
+            "plate": "66-L1 405.88",
+            "type": "Xe Ra (TT)",
+            "amount": -5000,
+            "time": "2026-03-21T21:26:39.090429",
+            "note": "Trừ 5,000đ"
+        },
+        {
+            "plate": "66-L1 405.88",
+            "type": "Xe Vào",
+            "amount": 0,
+            "time": "2026-03-21T21:26:25.147123",
+            "note": ""
+        },
+        {
+            "plate": "anh",
+            "type": "Nạp Tiền",
+            "amount": 12345,
+            "time": "2026-03-21T21:25:58.348781",
+            "note": "+12,345đ → Còn 12,345đ"
+        },
         {
             "plate": "68-E 000.07",
             "type": "Xe Ra (TT)",

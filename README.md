@@ -1,4 +1,36 @@
+
+
+
+Camnhandien/
+├── core/
+│   ├── __init__.py
+│   ├── detection.py      # YOLO model and plate detection
+│   ├── ocr.py            # EasyOCR and text processing
+│   └── utils.py          # Image processing helpers
+├── data/
+│   ├── __init__.py
+│   └── database.py       # ParkingDB logic
+├── ui/
+│   ├── __init__.py
+│   ├── main_app.py       # LicensePlateApp (original main.py GUI)
+│   ├── parking_app.py    # MobileParkingApp (original parking_app.py GUI)
+│   ├── dialogs.py        # ManualEntryDialog
+│   └── components.py     # UI helpers like rounded rects
+├── main.py               # Entry point for LicensePlateApp
+├── parking_app.py        # Entry point for MobileParkingApp
+└── best.pt               # Model file
+
+
+
+
+
 # Hướng dẫn sử dụng Hệ thống Camnhandien
+
+
+
+
+
+
 
 Dưới đây là các bước để cài đặt môi trường từ đầu (cho máy tính chưa có cài đặt gì) và sử dụng hệ thống: **Nhận diện biển số (Core)** và **Ứng dụng quản lý bãi xe (GUI)**.
 
