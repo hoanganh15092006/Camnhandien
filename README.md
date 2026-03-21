@@ -61,25 +61,10 @@ Sau khi đã hoàn tất cài đặt môi trường `venv`, bạn có hai lựa 
 ### Lựa chọn 1: Chạy đồng thời cả 2 màn hình bằng 1 lệnh (Git Bash)
 Nếu bạn đang sử dụng Git Bash, bạn có thể mở cả ứng dụng xử lý ảnh (`main.py`) và ứng dụng quản lý bãi xe (`parking_app.py`) chỉ với một dòng lệnh ở thư mục dự án:
 ```bash
-./venv/Scripts/python.exe main.py & ./venv/Scripts/python.exe parking_app.py
+python main.py & python parking_app.py
 ```
 
-### Lựa chọn 2: Chạy riêng biệt từng ứng dụng (Mở 2 terminal khác nhau)
-Mở 2 cửa sổ PowerShell / CMD và vẫn đứng ở thư mục `Camnhandien`:
 
-- **Terminal 1: Chạy Nhận diện & Xử lý Ảnh (`main.py`)**  
-  Đây là module sử dụng mô hình **YOLOv8 (`best.pt`)** để khoanh vùng biển số và nhận diện thô.
-  ```bash
-  .\venv\Scripts\python.exe main.py
-  ```
-
-- **Terminal 2: Chạy Quản lý Bãi xe (`parking_app.py`)**  
-  Khởi động GUI ứng dụng hoàn chỉnh tích hợp mô hình AI mới nhất để quản lý bãi xe.
-  ```bash
-  .\venv\Scripts\python.exe parking_app.py
-  ```
-
----
 
 ## ℹ Các tính năng chính của Parking App:
 - **AI Detection**: Tích hợp mô hình YOLO (`best.pt`) để phát hiện biển số cực nhạy, kể cả khi bị nghiêng.
