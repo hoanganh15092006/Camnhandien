@@ -1,0 +1,43 @@
+{
+    "balances": {
+        "63-S 000.06": 0,
+        "68-E 000.07": 64999
+    },
+    "active_sessions": {},
+    "accounts": {},
+    "owned_plates": {},
+    "camera_settings": {
+        "cam_index": 0,
+        "ip_cam_url": ""
+    },
+    "history": [
+        {
+            "plate": "68-E 000.07",
+            "type": "Xe Ra (TT)",
+            "amount": -5000,
+            "time": "2026-03-21T21:10:21.717163",
+            "note": "Trừ 5,000đ → Còn 64,999đ"
+        },
+        {
+            "plate": "68-E 000.07",
+            "type": "Xe Vào",
+            "amount": 0,
+            "time": "2026-03-21T21:10:02.190610",
+            "note": ""
+        },
+        {
+            "plate": "63-S 000.06",
+            "type": "Xe Ra (TT)",
+            "amount": -5000,
+            "time": "2026-03-21T21:08:00.967207",
+            "note": "Trừ 5,000đ → Còn 0đ"
+        },
+        {
+            "plate": "63-S 000.06",
+            "type": "Xe Vào",
+            "amount": 0,
+            "time": "2026-03-21T21:07:12.140233",
+            "note": ""
+        }
+    ]
+}

@@ -656,7 +656,7 @@ class MobileParkingApp:
                 if self._ocr_queue.empty():
                     small = imutils.resize(frame, width=400)
                     gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-                    loc = detect_plate_location(gray)
+                    loc = detect_plate_location(small)
                     scale = frame.shape[1] / small.shape[1]
                     try:
                         self._ocr_queue.put_nowait((frame.copy(), gray, loc, scale))

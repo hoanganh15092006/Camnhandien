@@ -11,6 +11,16 @@ import threading
 import queue
 import datetime
 import csv
+from ultralytics import YOLO
+
+# Load the YOLO model for license plate detection
+# Make sure best.pt is in the same directory
+try:
+    model = YOLO("best.pt")
+except Exception as e:
+    print(f"Error loading best.pt: {e}")
+    model = None
+
 
 
 # ─── OCR Helpers ──────────────────────────────────────────────────────────────
@@ -129,83 +139,30 @@ def process_plate(res):
     return formatted_text
 
 
-def detect_plate_location(gray):
+def detect_plate_location(frame):
     """
-    Find the best rectangle for the plate using dual paths:
-    1. Edge-based (Canny + Dilation) - detects high-contrast borders.
-    2. Region-based (Adaptive Threshold) - detects the white plate body.
-    Collects all candidates and picks the one that best fits plate geometry.
+    Find the license plate using YOLOv8 (best.pt).
+    Returns the bounding box coordinates as a 4-point array.
     """
-    if gray is None:
+    if frame is None or model is None:
         return None
 
-    # Path 1: Edges with Dilation
-    bfilt = cv2.bilateralFilter(gray, 11, 17, 17)
-    edged = cv2.Canny(bfilt, 30, 200)
-    # Smaller kernel for dilation to avoid merging with nearby objects
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-    dilated = cv2.dilate(edged, kernel, iterations=1)
+    # Run inference
+    results = model.predict(frame, conf=0.5, verbose=False)
     
-    # Path 2: Adaptive Threshold
-    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                   cv2.THRESH_BINARY_INV, 11, 2)
-    
-    candidates = []
-    
-    # Process both binary images to find candidates
-    for i, binary_img in enumerate([dilated, thresh]):
-        kp = cv2.findContours(binary_img.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contours = imutils.grab_contours(kp)
-        if not contours:
-            continue
-            
-        # Inspect top 15 contours by area
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:15]
-        
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if area < 600: continue # Slightly lower area min to allow for smaller views
-            
-            x, y, w, h = cv2.boundingRect(contour)
-            aspect = w / float(h)
-            
-            # Rebalance aspect ratios: wider range (0.5 to 6.5) to capture skewed/long plates
-            if not (0.5 < aspect < 6.5):
-                continue
-            
-            # Geometry checks
-            perim = cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, 0.02 * perim, True)
-            rect_area = w * h
-            solidity = float(area) / rect_area if rect_area > 0 else 0
-            
-            # Scoring:
-            # 1. Higher solidity is better (rectangularity)
-            # 2. 4-point approximation is a strong signal
-            # 3. Path 1 (Edges) typically has higher precision than Path 2 (Regions)
-            score = solidity * 10.0
-            if len(approx) == 4:
-                score += 5.0
-            if i == 0: # Favor edge-based detection slightly if sharp
-                score += 2.0
-                
-            if solidity > 0.4:
-                candidates.append({
-                    'score': score,
-                    'approx': approx,
-                    'rect': np.array([[[x, y]], [[x+w, y]], [[x+w, y+h]], [[x, y+h]]])
-                })
-                
-    if not candidates:
+    if not results or len(results[0].boxes) == 0:
         return None
         
-    # Pick the highest scoring candidate
-    best = sorted(candidates, key=lambda x: x['score'], reverse=True)[0]
+    # Get the box with highest confidence
+    box = results[0].boxes[0]
+    # x1, y1, x2, y2 coordinates
+    coords = box.xyxy[0].cpu().numpy()
+    x1, y1, x2, y2 = coords
     
-    # Prefer the 4-point approximation if it exists and score is high
-    if len(best['approx']) == 4:
-        return best['approx']
-    return best['rect']
+    # Format as a 4-point polygon: [[[x1, y1]], [[x2, y1]], [[x2, y2]], [[x1, y2]]]
+    # This matches the previous output format
+    res = np.array([[[int(x1), int(y1)]], [[int(x2), int(y1)]], [[int(x2), int(y2)]], [[int(x1), int(y2)]]])
+    return res
 
 
 def preprocess_crop(img):
@@ -608,7 +565,7 @@ class LicensePlateApp:
                     # Pre-compute plate detection here (cheap) to save OCR thread time
                     small = imutils.resize(frame, width=640)
                     gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-                    loc   = detect_plate_location(gray)
+                    loc   = detect_plate_location(small)
                     scale = frame.shape[1] / small.shape[1]
                     try:
                         self._ocr_queue.put_nowait((frame.copy(), gray, loc, scale))
