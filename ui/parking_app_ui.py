@@ -16,16 +16,15 @@ from core.detection import detect_plate_location
 from data.database import ParkingDB, ENTRY_DIR, ACTIVE_DIR, EXIT_DIR
 from ui.components import create_rounded_rect
 
-class MobileParkingApp:
+class ManagerParkingApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Parking App")
-        # Doubled width for desktop view
-        self.root.geometry("900x850")
-        self.root.resizable(False, False)
+        self.root.title("Hệ Thống Quản Lý Bãi Đỗ Xe")
+        self.root.geometry("1200x800")
+        self.root.configure(bg="#f4f6F9")
         
         self.db = ParkingDB()
-        self.current_user = None
+        self.current_user = None # Typically manager accounts can be added later, for now just basic auth or none
         
         # Scanner thread state
         self.reader = None
@@ -40,233 +39,268 @@ class MobileParkingApp:
         self._stop_capture = threading.Event()
         self._stop_ocr = threading.Event()
         
-        self.scan_mode = None # "ENTRY" or "EXIT"
+        self.scan_mode = None 
         self.vote_text = None
         self.vote_count = 0
         self.vote_best_conf = 0.0
         self.vote_best_frame = None
+
+        self.remote_target_plate = None
+        self.remote_cmd_id = None
+        self.root.after(2000, self._poll_remote_commands)
         
-        # Main Container Frame
-        self.main_frame = tk.Frame(self.root, width=900, height=850, bg="#1e1e2e")
-        self.main_frame.pack(fill="both", expand=True)
+        # Sidebar Frame
+        self.sidebar = tk.Frame(self.root, width=250, bg="#343a40")
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
+
+        logo_lbl = tk.Label(self.sidebar, text="🚗 Smart Parking", font=("Segoe UI", 18, "bold"), bg="#343a40", fg="white", pady=20)
+        logo_lbl.pack(fill="x")
+
+        # Main Content Frame
+        self.main_content = tk.Frame(self.root, bg="#f4f6F9")
+        self.main_content.pack(side="right", fill="both", expand=True)
 
         self.frames = {}
-        for F in ("Home", "History", "Info"):
-            frame = tk.Frame(self.main_frame, width=900, height=850, bg="#1e1e2e")
+        for F in ("Dashboard", "History", "Users"):
+            frame = tk.Frame(self.main_content, bg="#f4f6F9")
             self.frames[F] = frame
             frame.grid(row=0, column=0, sticky="nsew")
-
-        self.build_home_frame(self.frames["Home"])
-        self.build_history_frame(self.frames["History"])
-        self.build_info_frame(self.frames["Info"])
-
-        self.build_bottom_nav()
         
-        # Load OCR in background
+        self.main_content.grid_rowconfigure(0, weight=1)
+        self.main_content.grid_columnconfigure(0, weight=1)
+
+        self.build_sidebar_menu()
+        self.build_dashboard_frame(self.frames["Dashboard"])
+        self.build_history_frame(self.frames["History"])
+        self.build_users_frame(self.frames["Users"])
+
+        # Background OCR init
         threading.Thread(target=self._init_ocr, daemon=True).start()
         
-        self.show_frame("Home")
+        self.show_frame("Dashboard")
 
     def _init_ocr(self):
         self.reader = easyocr.Reader(['en'], gpu=False)
 
+    def _poll_remote_commands(self):
+        # Only process if we have an active scanner running for the correct command type
+        if getattr(self, 'scan_mode', None) in ["ENTRY", "EXIT"]:
+            try:
+                cmd = self.db.get_pending_command(self.scan_mode)
+                if cmd:
+                    self.db.update_command_status(cmd['id'], 'PROCESSING')
+                    self.remote_target_plate = cmd['qr_plate']
+                    self.remote_cmd_id = cmd['id']
+                    
+                    if self.scan_mode == "ENTRY":
+                        self.do_instant_entry_capture()
+                    elif self.scan_mode == "EXIT":
+                        self.do_instant_exit_capture()
+            except Exception as e:
+                pass
+        self.root.after(1000, self._poll_remote_commands)
+
     def show_frame(self, name):
         if name == "History":
             self.refresh_history_list()
+        elif name == "Dashboard":
+            self.refresh_dashboard()
+        elif name == "Users":
+            self.refresh_users()
         frame = self.frames[name]
         frame.tkraise()
-        if hasattr(self, 'nav_canvas_frame'):
-            self.nav_canvas_frame.tkraise()
+        # Reset sidebar active state
+        for btn_name, btn in self.sidebar_btns.items():
+            if btn_name == name:
+                btn.config(bg="#007bff", fg="white")
+            else:
+                btn.config(bg="#343a40", fg="#c2c7d0")
 
-    def build_bottom_nav(self):
-        self.nav_canvas_frame = tk.Frame(self.root, width=900, height=80, bg="white")
-        self.nav_canvas_frame.place(x=0, y=770)
-        self.nav_canvas = tk.Canvas(self.nav_canvas_frame, width=900, height=80, bg="white", highlightthickness=0)
-        self.nav_canvas.pack(fill="both", expand=True)
+    def build_sidebar_menu(self):
+        self.sidebar_btns = {}
+        menus = [("Tổng quan", "Dashboard", "📊"), ("Lịch sử xe", "History", "📋"), ("Khách hàng", "Users", "👥")]
+        for text, frame_name, icon in menus:
+            btn = tk.Button(self.sidebar, text=f"  {icon} {text}", font=("Segoe UI", 14), bg="#343a40", fg="#c2c7d0", 
+                            bd=0, anchor="w", padx=20, pady=15, activebackground="#4b545c", activeforeground="white",
+                            command=lambda f=frame_name: self.show_frame(f))
+            btn.pack(fill="x")
+            self.sidebar_btns[frame_name] = btn
+
+    def refresh_dashboard(self):
+        self.db._sync_mock_data()
+        active_sessions = len(self.db.data.get("active_sessions", {}))
+        self.dashboard_val_xe_trong_bai.config(text=f"{active_sessions}")
         
-        w = 900 // 3
-        # Home
-        self.nav_canvas.create_rectangle(0, 0, w, 80, fill="white", outline="", tags="nav_home")
-        self.nav_canvas.create_text(w//2, 40, text="🏠\nTrang chủ", font=("Segoe UI", 12), justify="center", fill="#1a73e8", tags="nav_home")
-        self.nav_canvas.tag_bind("nav_home", "<Button-1>", lambda e: self.show_frame("Home"))
+    def build_dashboard_frame(self, parent):
+        header = tk.Label(parent, text="Tổng quan rào chắn & Bãi đỗ", font=("Segoe UI", 24, "bold"), bg="#f4f6F9", fg="#333333")
+        header.pack(pady=20, padx=30, anchor="w")
+
+        # Stats Row
+        stats_frame = tk.Frame(parent, bg="#f4f6F9")
+        stats_frame.pack(fill="x", padx=30, pady=10)
+
+        # Card 1: Xe trong bãi
+        card1 = tk.Frame(stats_frame, bg="white", highlightbackground="#d2d6de", highlightthickness=1)
+        card1.pack(side="left", fill="both", expand=True, padx=(0, 15))
+        tk.Label(card1, text="Xe Đang Trong Bãi", font=("Segoe UI", 12), bg="white", fg="#666").pack(pady=(15,0))
+        self.dashboard_val_xe_trong_bai = tk.Label(card1, text="0", font=("Segoe UI", 28, "bold"), bg="white", fg="#007bff")
+        self.dashboard_val_xe_trong_bai.pack(pady=(0,15))
+
+        # Card 2: Sức chứa
+        card2 = tk.Frame(stats_frame, bg="white", highlightbackground="#d2d6de", highlightthickness=1)
+        card2.pack(side="left", fill="both", expand=True, padx=15)
+        tk.Label(card2, text="Tổng Sức Chứa", font=("Segoe UI", 12), bg="white", fg="#666").pack(pady=(15,0))
+        tk.Label(card2, text="500", font=("Segoe UI", 28, "bold"), bg="white", fg="#28a745").pack(pady=(0,15))
+
+        # Control Panel
+        control_frame = tk.Frame(parent, bg="white", highlightbackground="#d2d6de", highlightthickness=1)
+        control_frame.pack(fill="both", expand=True, padx=30, pady=20)
         
-        # History
-        self.nav_canvas.create_rectangle(w, 0, w*2, 80, fill="white", outline="", tags="nav_hist")
-        self.nav_canvas.create_text(w + w//2, 40, text="📋\nTra cứu", font=("Segoe UI", 12), justify="center", fill="#808080", tags="nav_hist")
-        self.nav_canvas.tag_bind("nav_hist", "<Button-1>", lambda e: self.show_frame("History"))
+        tk.Label(control_frame, text="Kiểm Soát Làn Xe", font=("Segoe UI", 18, "bold"), bg="white", fg="#333").pack(pady=20)
+
+        btns_f = tk.Frame(control_frame, bg="white")
+        btns_f.pack(pady=20)
+
+        tk.Button(btns_f, text=" MỞ LÀN VÀO (IN) ", font=("Segoe UI", 16, "bold"), bg="#28a745", fg="white", padx=20, pady=15,
+                  command=lambda: self.open_scanner("ENTRY")).pack(side="left", padx=20)
         
-        # Info
-        self.nav_canvas.create_rectangle(w*2, 0, w*3, 80, fill="white", outline="", tags="nav_info")
-        self.nav_canvas.create_text(w*2 + w//2, 40, text="👤\nTài khoản", font=("Segoe UI", 12), justify="center", fill="#808080", tags="nav_info")
-        self.nav_canvas.tag_bind("nav_info", "<Button-1>", lambda e: self.show_frame("Info"))
+        tk.Button(btns_f, text=" MỞ LÀN RA (OUT) ", font=("Segoe UI", 16, "bold"), bg="#dc3545", fg="white", padx=20, pady=15,
+                  command=lambda: self.open_scanner("EXIT")).pack(side="left", padx=20)
 
-    def build_home_frame(self, parent_frame):
-        self.bg_canvas = tk.Canvas(parent_frame, width=900, height=850, highlightthickness=0)
-        self.bg_canvas.pack(fill="both", expand=True)
-        
-        # Gradient
-        color_top, color_bottom = "#9CbCBC", "#D8E6E3"
-        for i in range(850):
-            r = int(int(color_top[1:3], 16) * (1 - i/850) + int(color_bottom[1:3], 16) * (i/850))
-            g = int(int(color_top[3:5], 16) * (1 - i/850) + int(color_bottom[3:5], 16) * (i/850))
-            b = int(int(color_top[5:7], 16) * (1 - i/850) + int(color_bottom[5:7], 16) * (i/850))
-            color = f"#{r:02x}{g:02x}{b:02x}"
-            self.bg_canvas.create_line(0, i, 900, i, fill=color)
-
-        # Header Location
-        create_rounded_rect(self.bg_canvas, 100, 20, 800, 90, radius=20, fill="white", outline="")
-        self.bg_canvas.create_text(160, 40, text="Ga gần nhất:", font=("Segoe UI", 16, "bold"), anchor="w", fill="#202020")
-        self.bg_canvas.create_text(160, 65, text="Tòa nhà Trung Tâm Đỗ Xe", font=("Segoe UI", 11), anchor="w", fill="#808080")
-        self.bg_canvas.create_oval(115, 40, 145, 70, fill="#E0E0E0", outline="")
-        self.bg_canvas.create_text(130, 55, text="📍", font=("Segoe UI", 16))
-
-        # 3 Action Buttons
-        bts = [("btn1", 165, "#f2b24c", "IN", "Xe Vào", "ENTRY"), 
-               ("btn2", 390, "#f07865", "OUT", "Xe Ra", "EXIT"), 
-               ("btn3", 615, "#40bced", "$", "Nạp tiền", "TOPUP")]
-        for tag, x, color, txt, lbl, mode in bts:
-            create_rounded_rect(self.bg_canvas, x, 110, x+120, 230, radius=15, fill="white", outline="#cccccc", width=2, tags=tag)
-            self.bg_canvas.create_rectangle(x+30, 130, x+90, 190, fill=color, outline="", width=0, tags=tag)
-            self.bg_canvas.create_text(x+60, 160, text=txt, font=("Segoe UI", 20 if len(txt)<3 else 24, "bold"), fill="white", tags=tag)
-            self.bg_canvas.create_text(x+60, 210, text=lbl, font=("Segoe UI", 12, "bold"), fill="#202020", tags=tag)
-            if mode == "TOPUP": self.bg_canvas.tag_bind(tag, "<Button-1>", lambda e: self.open_topup())
-            else: self.bg_canvas.tag_bind(tag, "<Button-1>", lambda e, m=mode: self.open_scanner(m))
-
-        create_rounded_rect(self.bg_canvas, 50, 250, 850, 360, radius=15, fill="white", outline="")
-        self.bg_canvas.create_text(70, 275, text="HÀNH TRÌNH CỦA BẠN", font=("Segoe UI", 14, "bold"), anchor="w", fill="#18434a")
-        self.journey_text_id = self.bg_canvas.create_text(100, 320, text="Chưa có xe trong bãi", font=("Segoe UI", 13), anchor="w", fill="#e66f36")
-        self.bg_canvas.create_text(75, 320, text="🍂", font=("Segoe UI", 14), anchor="w")
-
-        # Tin tức
-        self.bg_canvas.create_text(50, 400, text="Tin tức & chương trình", font=("Segoe UI", 16, "bold"), anchor="w", fill="#202020")
-        create_rounded_rect(self.bg_canvas, 50, 430, 440, 530, radius=15, fill="#cc3333", outline="")
-        self.bg_canvas.create_text(245, 480, text="Ưu đãi Gửi xe tháng", font=("Segoe UI", 14, "bold"), fill="white")
-        create_rounded_rect(self.bg_canvas, 460, 430, 850, 530, radius=15, fill="#2b4c7e", outline="")
-        self.bg_canvas.create_text(655, 480, text="Q&A Hướng dẫn", font=("Segoe UI", 14, "bold"), fill="white")
-        create_rounded_rect(self.bg_canvas, 50, 550, 850, 650, radius=15, fill="#0f7c46", outline="")
-        self.bg_canvas.create_text(450, 600, text="HÀNH TRÌNH XANH - Tích điểm đổi quà", font=("Segoe UI", 16, "bold"), fill="white")
-
-    def build_history_frame(self, parent_frame):
-        tk.Label(parent_frame, text="Tra Cứu Lịch Sử Giao Dịch", font=("Segoe UI", 20, "bold"), bg="#1e1e2e", fg="white").pack(pady=20)
-        search_frame = tk.Frame(parent_frame, bg="#1e1e2e")
-        search_frame.pack(pady=5)
-        tk.Label(search_frame, text="Biển số cần tra:", font=("Segoe UI", 12), bg="#1e1e2e", fg="white").pack(side="left", padx=5)
-        self.search_plate_var = tk.StringVar()
-        tk.Entry(search_frame, textvariable=self.search_plate_var, font=("Segoe UI", 12), width=25).pack(side="left", padx=5)
-        tk.Button(search_frame, text="Tìm", font=("Segoe UI", 10, "bold"), bg="#89b4fa", fg="#1e1e2e", width=8, command=self.refresh_history_list).pack(side="left", padx=5)
-        tk.Button(search_frame, text="Tất cả xe", font=("Segoe UI", 10, "bold"), bg="#a6e3a1", fg="#1e1e2e", command=self.show_all_owned_history).pack(side="left", padx=5)
-        self.hist_msg_var = tk.StringVar(value="")
-        tk.Label(parent_frame, textvariable=self.hist_msg_var, font=("Segoe UI", 12, "italic"), bg="#1e1e2e", fg="#f38ba8").pack(pady=5)
-        
-        tree_frame = tk.Frame(parent_frame, bg="#1e1e2e")
-        tree_frame.pack(fill="both", expand=True, padx=10)
-        h_scroll = ttk.Scrollbar(tree_frame, orient="horizontal")
-        h_scroll.pack(side="bottom", fill="x")
-        columns = ("time", "plate", "type", "amount", "note")
-        self.hist_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=18, xscrollcommand=h_scroll.set)
-        h_scroll.config(command=self.hist_tree.xview)
-        for c, t, w in zip(columns, ["Thời gian", "Biển số", "Loại", "Số tiền", "Ghi chú"], [120, 120, 100, 100, 350]):
-            self.hist_tree.heading(c, text=t)
-            self.hist_tree.column(c, width=w, stretch=tk.NO, anchor="center" if c!="note" else "w")
-        self.hist_tree.pack(fill="both", expand=True)
-
-        self.hist_tree.bind("<Button-1>", lambda e: "break" if self.hist_tree.identify_region(e.x, e.y) == "separator" else None, add="+")
-        self._drag_start_x = 0
-        def on_drag_start(e): self._drag_start_x = e.x
-        def on_drag_motion(e):
-            delta = self._drag_start_x - e.x
-            self.hist_tree.xview_scroll(delta, "units")
-            self._drag_start_x = e.x
-        self.hist_tree.bind("<Button-1>", on_drag_start, add="+")
-        self.hist_tree.bind("<B1-Motion>", on_drag_motion)
-
-    def show_all_owned_history(self):
-        for row in self.hist_tree.get_children(): self.hist_tree.delete(row)
-        if not self.current_user:
-            self.hist_msg_var.set("Vui lòng đăng nhập ở tab Tài khoản để tra cứu.")
-            return
-        owned = self.db.get_owned_plates(self.current_user)
-        all_keys = set(owned + [self.current_user])
-        self.hist_msg_var.set(f"Xe của bạn: {', '.join(owned)}" if owned else f"Tài khoản {self.current_user} chưa có xe nào.")
-        for r in self.db.get_history():
-            if r['plate'] in all_keys: self._insert_tree_row(r)
+        self.status_lbl = tk.Label(control_frame, text="Trạng thái hệ thống: Sẵn sàng", font=("Segoe UI", 12, "italic"), bg="white", fg="#666")
+        self.status_lbl.pack(pady=40)
 
     def refresh_history_list(self):
         for row in self.hist_tree.get_children(): self.hist_tree.delete(row)
-        if not self.current_user:
-            self.hist_msg_var.set("Vui lòng đăng nhập ở tab Tài khoản để tra cứu.")
-            return
         target = self.search_plate_var.get().strip().upper()
-        if not target: self.show_all_owned_history(); return
-        self.hist_msg_var.set(f"Lịch sử của xe: {target}")
-        for r in self.db.get_history():
-            if r['plate'] == target: self._insert_tree_row(r)
+        history = self.db.get_history()
+        # Sort history newer first
+        history.reverse()
+        for r in history:
+            if not target or target in r['plate']:
+                amt = f"{r['amount']:,}đ" if r.get('amount', 0) != 0 else "-"
+                try: time_str = datetime.datetime.fromisoformat(r['time']).strftime("%d/%m %H:%M:%S")
+                except: time_str = r['time']
+                self.hist_tree.insert("", "end", values=(time_str, r['plate'], r['type'], amt, r.get('note', '')))
 
-    def _insert_tree_row(self, r):
-        amt = f"{r['amount']:,}đ" if r['amount'] != 0 else "-"
-        try: time_str = datetime.datetime.fromisoformat(r['time']).strftime("%d/%m %H:%M")
-        except: time_str = r['time']
-        self.hist_tree.insert("", "end", values=(time_str, r['plate'], r['type'], amt, r.get('note', '')))
+    def build_history_frame(self, parent):
+        header = tk.Label(parent, text="Lịch Sử Giao Dịch", font=("Segoe UI", 24, "bold"), bg="#f4f6F9", fg="#333")
+        header.pack(pady=20, padx=30, anchor="w")
 
-    def build_info_frame(self, parent_frame):
-        self.info_frame_container = parent_frame
-        self.render_info_content()
+        search_frame = tk.Frame(parent, bg="#f4f6F9")
+        search_frame.pack(fill="x", padx=30, pady=5)
+        tk.Label(search_frame, text="Biển số cần tra:", font=("Segoe UI", 12), bg="#f4f6F9", fg="#333").pack(side="left", padx=5)
+        self.search_plate_var = tk.StringVar()
+        entry = tk.Entry(search_frame, textvariable=self.search_plate_var, font=("Segoe UI", 12), width=30)
+        entry.pack(side="left", padx=5)
+        entry.bind("<Return>", lambda e: self.refresh_history_list())
+        
+        tk.Button(search_frame, text="Tìm kiếm", font=("Segoe UI", 12), bg="#007bff", fg="white", command=self.refresh_history_list).pack(side="left", padx=10)
+        
+        tree_frame = tk.Frame(parent, bg="white", highlightbackground="#d2d6de", highlightthickness=1)
+        tree_frame.pack(fill="both", expand=True, padx=30, pady=10)
+        
+        y_scroll = ttk.Scrollbar(tree_frame, orient="vertical")
+        y_scroll.pack(side="right", fill="y")
+        
+        columns = ("time", "plate", "type", "amount", "note")
+        self.hist_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", yscrollcommand=y_scroll.set)
+        y_scroll.config(command=self.hist_tree.yview)
+        
+        for c, t, w in zip(columns, ["Thời gian", "Biển số", "Loại", "Số tiền", "Ghi chú"], [150, 150, 120, 120, 300]):
+            self.hist_tree.heading(c, text=t)
+            self.hist_tree.column(c, width=w, stretch=tk.YES if c=="note" else tk.NO, anchor="center" if c!="note" else "w")
+        self.hist_tree.pack(fill="both", expand=True)
 
-    def render_info_content(self):
-        for widget in self.info_frame_container.winfo_children(): widget.destroy()
-        tk.Label(self.info_frame_container, text="Tài Khoản", font=("Segoe UI", 20, "bold"), bg="#1e1e2e", fg="white").pack(pady=30)
-        if self.current_user is None:
-            tk.Label(self.info_frame_container, text="Bạn chưa đăng nhập. Vui lòng đăng nhập\nhoặc đăng ký theo tên tài khoản bất kỳ.", font=("Segoe UI", 12), bg="#1e1e2e", fg="#a6adc8").pack(pady=10)
-            f = tk.Frame(self.info_frame_container, bg="#313244", padx=20, pady=20); f.pack(pady=20)
-            tk.Label(f, text="Tài khoản:", font=("Segoe UI", 12), bg="#313244", fg="white").grid(row=0, column=0, pady=5, sticky="w")
-            self.login_plate_var = tk.StringVar(); tk.Entry(f, textvariable=self.login_plate_var, font=("Segoe UI", 12), width=25).grid(row=0, column=1, pady=5, padx=10)
-            tk.Label(f, text="Mật khẩu:", font=("Segoe UI", 12), bg="#313244", fg="white").grid(row=1, column=0, pady=5, sticky="w")
-            self.login_pass_var = tk.StringVar(); tk.Entry(f, textvariable=self.login_pass_var, show="*", font=("Segoe UI", 12), width=25).grid(row=1, column=1, pady=5, padx=10)
-            btn_f = tk.Frame(f, bg="#313244"); btn_f.grid(row=2, column=0, columnspan=2, pady=20)
-            tk.Button(btn_f, text="Đăng nhập", font=("Segoe UI", 12, "bold"), bg="#89b4fa", fg="#1e1e2e", width=15, command=self.do_login).pack(side="left", padx=10)
-            tk.Button(btn_f, text="Đăng ký", font=("Segoe UI", 12, "bold"), bg="#a6e3a1", fg="#1e1e2e", width=15, command=self.do_register).pack(side="left", padx=10)
-        else:
-            tk.Label(self.info_frame_container, text=f"Xin chào,\n{self.current_user}", font=("Segoe UI", 24, "bold"), bg="#1e1e2e", fg="#89dceb").pack(pady=20)
-            tk.Label(self.info_frame_container, text=f"Ví chung: {self.db.get_balance(self.current_user):,} VNĐ", font=("Segoe UI", 14), bg="#1e1e2e", fg="#cdd6f4").pack(pady=5)
-            tk.Button(self.info_frame_container, text="Nạp tiền", font=("Segoe UI", 14, "bold"), bg="#f9e2af", fg="#1e1e2e", width=15, command=self.open_topup).pack(pady=20)
-            tk.Button(self.info_frame_container, text="Đăng xuất", font=("Segoe UI", 12), bg="#f38ba8", fg="#1e1e2e", width=15, command=lambda: setattr(self, 'current_user', None) or self.render_info_content()).pack(pady=30)
+    def refresh_users(self):
+        for row in self.users_tree.get_children(): self.users_tree.delete(row)
+        for acc in self.db.data.get("accounts", {}).keys():
+            balance = self.db.get_balance(acc)
+            owned = self.db.get_owned_plates(acc)
+            self.users_tree.insert("", "end", values=(acc, f"{balance:,}đ", ", ".join(owned)))
 
-    def do_login(self):
-        u, p = self.login_plate_var.get().strip(), self.login_pass_var.get()
-        if not u or not p: messagebox.showerror("Lỗi", "Nhập đủ thông tin!"); return
-        if self.db.data.get("accounts", {}).get(u) == p: self.current_user = u; self.render_info_content()
-        else: messagebox.showerror("Lỗi", "Sai thông tin hoặc tài khoản chưa tồn tại!")
+    def build_users_frame(self, parent):
+        header = tk.Label(parent, text="Quản Lý Khách Hàng", font=("Segoe UI", 24, "bold"), bg="#f4f6F9", fg="#333")
+        header.pack(pady=20, padx=30, anchor="w")
 
-    def do_register(self):
-        u, p = self.login_plate_var.get().strip(), self.login_pass_var.get()
-        if not u or not p: messagebox.showerror("Lỗi", "Nhập đủ thông tin!"); return
-        if u in self.db.data["accounts"]: messagebox.showerror("Lỗi", "Tài khoản tồn tại!"); return
-        self.db.data["accounts"][u] = p; self.db.save(); messagebox.showinfo("OK", "Đăng ký thành công!"); self.current_user = u; self.render_info_content()
+        top_f = tk.Frame(parent, bg="#f4f6F9")
+        top_f.pack(fill="x", padx=30, pady=5)
+        tk.Button(top_f, text="Nạp tiền thủ công", font=("Segoe UI", 12), bg="#28a745", fg="white", command=self.open_topup).pack(side="right")
 
-    def update_journey_status(self, text, color="#e66f36"): self.bg_canvas.itemconfig(self.journey_text_id, text=text, fill=color)
+        tree_frame = tk.Frame(parent, bg="white", highlightbackground="#d2d6de", highlightthickness=1)
+        tree_frame.pack(fill="both", expand=True, padx=30, pady=10)
+        
+        y_scroll = ttk.Scrollbar(tree_frame, orient="vertical")
+        y_scroll.pack(side="right", fill="y")
+        
+        columns = ("user", "balance", "plates")
+        self.users_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", yscrollcommand=y_scroll.set)
+        y_scroll.config(command=self.users_tree.yview)
+        
+        self.users_tree.heading("user", text="Tài khoản")
+        self.users_tree.column("user", width=200, anchor="center")
+        self.users_tree.heading("balance", text="Số dư Ví")
+        self.users_tree.column("balance", width=150, anchor="center")
+        self.users_tree.heading("plates", text="Biển số đã đăng ký")
+        self.users_tree.column("plates", width=400, stretch=tk.YES)
+        
+        self.users_tree.pack(fill="both", expand=True)
+
+    def set_status(self, text):
+        self.status_lbl.config(text=f"Trạng thái: {text}")
 
     def open_topup(self):
-        acc = self.current_user or simpledialog.askstring("Nạp tiền", "Tên tài khoản:", parent=self.root)
+        acc = simpledialog.askstring("Nạp tiền", "Nhập tên tài khoản (Khách hàng):", parent=self.root)
         if acc:
             acc = acc.strip()
-            if acc not in self.db.data["accounts"]: messagebox.showerror("Lỗi", "Tài khoản chưa tồn tại!"); return
+            if acc not in self.db.data.get("accounts", {}): messagebox.showerror("Lỗi", "Tài khoản chưa tồn tại!"); return
             amt_s = simpledialog.askstring("Nạp tiền", f"Số tiền nạp cho {acc}:", parent=self.root)
             if amt_s and amt_s.isdigit():
                 amt = int(amt_s); nb = self.db.add_balance(acc, amt)
-                self.db.add_history_record(acc, "Nạp Tiền", amt, datetime.datetime.now().isoformat(), note=f"+{amt:,}đ → Còn {nb:,}đ")
-                messagebox.showinfo("OK", f"Đã nạp {amt:,}đ. Dư: {nb:,}đ"); self.render_info_content()
+                self.db.add_history_record(acc, "Nạp Tiền", amt, datetime.datetime.now().isoformat(), note=f"Hệ thống nạp +{amt:,}đ")
+                messagebox.showinfo("OK", f"Đã nạp {amt:,}đ. Dư: {nb:,}đ")
+                self.refresh_users()
 
     def open_scanner(self, mode):
-        if not self.reader: messagebox.showwarning("Chờ", "Hệ thống đang khởi động..."); return
-        self.scan_mode, self.vote_text, self.vote_count, self.vote_best_conf, self.vote_best_frame = mode, None, 0, 0.0, None
-        v = tk.Toplevel(self.root); v.title(f"Quét {'VÀO' if mode=='ENTRY' else 'RA'}"); v.geometry("500x700"); v.configure(bg="#1e1e2e")
-        v.grab_set(); self.scan_win = v
-        tk.Label(v, text="Camera Quét Biển Số", bg="#1e1e2e", fg="white", font=("Segoe UI",14,"bold")).pack(pady=10)
-        self.cam_label = tk.Label(v, bg="black"); self.cam_label.pack(fill="both", expand=True, padx=10, pady=10)
-        self.status_var = tk.StringVar(value="Đang mở..."); tk.Label(v, textvariable=self.status_var, bg="#1e1e2e", fg="#a6e3a1").pack(pady=5)
-        bf = tk.Frame(v, bg="#1e1e2e"); bf.pack(pady=10)
-        for t, c, bg in [("✖ Hủy", self.close_scanner, "#f38ba8"), ("⌨ Nhập tay", self.manual_override, "#89b4fa"), ("💻 PC Cam", lambda: self._set_cam(0), "#a6e3a1"), ("📱 IP Cam", self._set_ip, "#fab387")]:
-             tk.Button(bf, text=t, command=c, bg=bg, font=("Segoe UI",12)).pack(side="left", padx=10)
+        if not self.reader: 
+            messagebox.showwarning("Chờ", "Hệ thống AI đang khởi động..."); return
+            
+        if hasattr(self, 'scan_win') and self.scan_win.winfo_exists():
+            if self.scan_mode == mode:
+                self.scan_win.lift()
+                self.scan_win.focus_force()
+                return
+            else:
+                self.close_scanner()
+                
+        self.scan_mode = mode
+        self.vote_text, self.vote_count, self.vote_best_conf, self.vote_best_frame = None, 0, 0.0, None
+        
+        v = tk.Toplevel(self.root)
+        v.title(f"Quét {'VÀO' if mode=='ENTRY' else 'RA'}")
+        v.geometry("700x550")
+        v.configure(bg="#2d3436")
+        v.grab_set()
+        self.scan_win = v
+        
+        header_text = "CAMERA KIỂM SOÁT XE VÀO" if mode == "ENTRY" else "CAMERA KIỂM SOÁT XE RA"
+        tk.Label(v, text=header_text, bg="#2d3436", fg="white", font=("Segoe UI",16,"bold")).pack(pady=10)
+        
+        self.cam_label = tk.Label(v, bg="black")
+        self.cam_label.pack(fill="both", expand=True, padx=20, pady=5)
+        
+        self.cam_status_var = tk.StringVar(value="Đang mở...")
+        tk.Label(v, textvariable=self.cam_status_var, bg="#2d3436", fg="#00b894", font=("Segoe UI", 12)).pack(pady=5)
+        
+        bf = tk.Frame(v, bg="#2d3436")
+        bf.pack(pady=10)
+        
+        tk.Button(bf, text="✖ Hủy & Đóng", command=self.close_scanner, bg="#d63031", fg="white", font=("Segoe UI",12)).pack(side="left", padx=10)
+        tk.Button(bf, text="⌨ Nhập tay (Sự cố)", command=self.manual_override, bg="#0984e3", fg="white", font=("Segoe UI",12)).pack(side="left", padx=10)
+        tk.Button(bf, text="💻 PC Cam", command=lambda: self._set_cam(0), bg="#00b894", fg="white", font=("Segoe UI",12)).pack(side="left", padx=10)
+        tk.Button(bf, text="📱 IP Cam", command=self._set_ip, bg="#e17055", fg="white", font=("Segoe UI",12)).pack(side="left", padx=10)
+        
         self._start_camera()
 
     def _set_cam(self, idx): self.cam_index = idx; self.db.save_camera_settings(idx, self.ip_cam_url); self._start_camera()
@@ -277,11 +311,16 @@ class MobileParkingApp:
     def _start_camera(self):
         self._stop_capture.set(); self._stop_ocr.set(); import time; time.sleep(0.15)
         self._stop_capture.clear(); self._stop_ocr.clear()
+        
         def w():
             cap = cv2.VideoCapture(self.ip_cam_url if self.cam_index==-1 else self.cam_index, cv2.CAP_DSHOW)
-            if not cap.isOpened(): self.status_var.set("❌ Lỗi camera!"); return
-            self._cap = cap; self.status_var.set("Sẵn sàng..."); threading.Thread(target=self._cap_loop, args=(cap,), daemon=True).start()
-            threading.Thread(target=self._ocr_loop, daemon=True).start(); self._poll_display(); self._poll_results()
+            if not cap.isOpened(): self.cam_status_var.set("❌ Lỗi camera!"); return
+            self._cap = cap; self.cam_status_var.set("AI đang phân tích luồng hình ảnh...")
+            threading.Thread(target=self._cap_loop, args=(cap,), daemon=True).start()
+            threading.Thread(target=self._ocr_loop, daemon=True).start()
+            self._poll_display()
+            self._poll_results()
+            
         threading.Thread(target=w, daemon=True).start()
 
     def _cap_loop(self, cap):
@@ -313,27 +352,43 @@ class MobileParkingApp:
                         conf = sum(r[2] for r in res)/len(res)
                         if conf >= 0.6: text = p; pi = (loc*s).astype(int); cv2.polylines(ann, [pi], True, (0,255,0), 3)
                 except: pass
-            self._result_queue.put_nowait((text, conf, ann))
+            try: self._result_queue.put_nowait((text, conf, ann))
+            except: pass
 
     def _poll_display(self):
-        if self._stop_capture.is_set(): return
+        if self._stop_capture.is_set() or not hasattr(self, 'scan_win') or not self.scan_win.winfo_exists(): return
         try:
-            f = self._display_queue.get_nowait(); p = ImageTk.PhotoImage(Image.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)).resize((480,360)))
+            f = self._display_queue.get_nowait()
+            p = ImageTk.PhotoImage(Image.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)).resize((640,400)))
             self.cam_label.configure(image=p); self.cam_label.image = p
         except: pass
         self.scan_win.after(30, self._poll_display)
 
     def _poll_results(self):
-        if self._stop_ocr.is_set(): return
+        if self._stop_ocr.is_set() or not hasattr(self, 'scan_win') or not self.scan_win.winfo_exists(): return
         try:
             t, c, a = self._result_queue.get_nowait()
+            self.current_seen_frame = a
+            
             if t:
-                self.status_var.set(f"🔍 {t} ({c:.0%})")
-                if t == self.vote_text:
+                self.cam_status_var.set(f"🔍 Đang xem biển số: {t} (Chờ lệnh App)")
+                
+                # Check stable plate voting
+                if t == getattr(self, 'vote_text', None):
                     self.vote_count += 1
-                    if c > self.vote_best_conf: self.vote_best_conf, self.vote_best_frame = c, a
-                else: self.vote_text, self.vote_count, self.vote_best_conf, self.vote_best_frame = t, 1, c, a
-                if self.vote_count >= 5: self.process_scan_result(self.vote_text, self.vote_best_frame); return
+                else:
+                    self.vote_text, self.vote_count = t, 1
+                    
+                if self.vote_count >= 2:
+                    self.stable_plate = t
+            else:
+                if getattr(self, 'vote_count', 0) > 0:
+                    self.vote_count -= 1
+                if getattr(self, 'vote_count', 0) <= 0:
+                    self.stable_plate = None
+                    self.vote_text = None
+            
+            # EXIT is now handled by do_instant_exit_capture
         except: pass
         self.scan_win.after(100, self._poll_results)
 
@@ -341,44 +396,201 @@ class MobileParkingApp:
         p = simpledialog.askstring("Nhập tay", "Nhập biển số:", parent=self.scan_win)
         if p and is_valid_plate(p.strip().upper()): self.process_scan_result(p.strip().upper(), None)
 
-    def process_scan_result(self, p, f):
-        self._stop_capture.set(); self._stop_ocr.set()
-        if self.scan_mode == "ENTRY": self.handle_entry(p, f)
-        else: self.handle_exit(p, f)
+    def do_instant_entry_capture(self):
+        import time
+        t = getattr(self, 'stable_plate', None)
+        if not t: t = getattr(self, 'vote_text', None)
+        
+        if not t:
+            t = simpledialog.askstring("Sự Cố Camera IN", "Camera không nhận ra biển số!\nXin bảo vệ nhập thủ công bằng mắt thường:", parent=self.scan_win)
+            if not t:
+                self.set_status("Bảo vệ hủy quy trình nhập IN.")
+                self.db.update_command_status(self.remote_cmd_id, 'FAILED', "Bảo vệ từ chối xe Vô Danh từ trạm PC.")
+                self.remote_target_plate = None
+                return
+            t = t.strip().upper()
+            
+        f = getattr(self, 'current_seen_frame', None)
+        if f is None and hasattr(self, '_cap') and self._cap is not None:
+             ret, f = self._cap.read()
+        
+        if f is None and not self._display_queue.empty():
+            try: f = self._display_queue.get_nowait()
+            except: pass
+            
+        ann = f.copy() if f is not None else None
+        
+        self.handle_entry(t, ann, linked_user=self.remote_target_plate)
+        self.db.update_command_status(self.remote_cmd_id, 'COMPLETED', f"Biển số '{t}' đã vào bãi an toàn!")
+        self.set_status(f"Xe {t} mới vào lúc {datetime.datetime.now().strftime('%H:%M')} (Lập tức ghi hình)")
+        
+        self.remote_target_plate = None
+        self.stable_plate = None
+        self.vote_text = None
 
-    def handle_entry(self, p, f):
-        if self.db.get_session(p): messagebox.showwarning("!", f"Xe {p} đã trong bãi!", parent=self.scan_win)
+    def do_instant_exit_capture(self):
+        t = getattr(self, 'stable_plate', None)
+        if not t: t = getattr(self, 'vote_text', None)
+        
+        target_user = self.remote_target_plate
+        import datetime
+        fee = 5000 if datetime.datetime.now().hour >= 18 else 3000
+        
+        if not t or t.startswith("KHONG_BKS"):
+            # Predict the plate for the guard based on active sessions
+            active_for_user = [p for p in self.db.get_owned_plates(target_user) if self.db.get_session(p)]
+            suggest = active_for_user[0] if len(active_for_user) == 1 else ""
+            
+            t = simpledialog.askstring("Sự Cố Camera OUT", f"Không rõ biển số. Khách hàng '{target_user}' đang chờ!\nHãy gõ biển số xe để trừ tiền vào App:", initialvalue=suggest, parent=self.scan_win)
+            
+            if not t:
+                self.set_status("Hủy nhập tay OUT!")
+                self.db.update_command_status(self.remote_cmd_id, 'FAILED', "Thất bại: Camera vướng & Bảo vệ hủy nhập tay.")
+                self.remote_target_plate, self.stable_plate, self.vote_text = None, None, None
+                return
+            t = t.strip().upper()
+
+        owned = self.db.get_owned_plates(target_user)
+        if t in owned:
+            if self.db.get_session(t):
+                if self.db.get_balance(target_user) >= fee:
+                    self.db.deduct_balance(target_user, fee)
+                    self.db.end_session(t)
+                    self.db.add_history_record(t, "Xe Ra (App)", -fee, datetime.datetime.now().isoformat(), note=f"App: Trừ {fee:,}đ")
+                    self.set_status(f"Ra thành công: {t}")
+                    self.db.update_command_status(self.remote_cmd_id, 'COMPLETED', f"Mở barie thành công! Xe '{t}' đã ra bãi. Trừ {fee:,}đ.")
+                else:
+                    self.set_status(f"Từ chối: {target_user} không đủ {fee:,}đ!")
+                    self.db.update_command_status(self.remote_cmd_id, 'FAILED', f"Tài khoản không đủ cước (Cần {fee:,}đ). Nạp thêm để ra.")
+            else:
+                self.db.update_command_status(self.remote_cmd_id, 'FAILED', f"Lỗi: Biển số '{t}' hiện KHÔNG có trong bãi.")
         else:
-            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S"); path = os.path.join(ACTIVE_DIR, f"{p}_{ts}.png")
-            if f is not None: cv2.imwrite(path, f); cv2.imwrite(os.path.join(ENTRY_DIR, f"{p}_{ts}.png"), f)
-            self.db.start_session(p, path if f is not None else ""); self.db.add_history_record(p, "Xe Vào", 0, datetime.datetime.now().isoformat())
-            if self.current_user: self.db.link_plate(self.current_user, p)
-            messagebox.showinfo("OK", f"Đã vào bãi: {p}"); self.update_journey_status(f"Xe {p} đang trong bãi", "#28a745")
-        self.close_scanner()
+            self.db.update_command_status(self.remote_cmd_id, 'FAILED', f"Nhầm xe! Xe '{t}' trước mặt không phải của tài khoản '{target_user}'.")
+            
+        self.remote_target_plate = None
+        self.stable_plate = None
+        self.vote_text = None
+        self.refresh_dashboard()
+
+    def process_scan_result(self, p, f, linked_user=None):
+        if self.scan_mode == "ENTRY": self.handle_entry(p, f, linked_user)
+        else: 
+            self._stop_capture.set(); self._stop_ocr.set() # Stop for manual exit window
+            self.handle_exit(p, f)
+
+    def handle_entry(self, p, f, linked_user=None):
+        if self.db.get_session(p): 
+            print(f"Xe {p} đã trong bãi, bỏ qua")
+        else:
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = os.path.join(ACTIVE_DIR, f"{p}_{ts}.png")
+            if f is not None: 
+                cv2.imwrite(path, f)
+                cv2.imwrite(os.path.join(ENTRY_DIR, f"{p}_{ts}.png"), f)
+            
+            self.db.start_session(p, path if f is not None else "")
+            
+            note_str = ""
+            if linked_user:
+                self.db.link_plate(linked_user, p)
+                note_str = f"App Liên kết: {linked_user}"
+                
+            self.db.add_history_record(p, "Xe Vào", 0, datetime.datetime.now().isoformat(), note=note_str)
+            self.set_status(f"Xe {p} mới vào lúc {datetime.datetime.now().strftime('%H:%M')} (Cam đang mở)")
+        # KHÔNG GỌI close_scanner() để camera tiếp tục mở
+        self.refresh_dashboard()
+
+    def process_remote_exit(self, p, f, paying_user):
+        s = self.db.get_session(p)
+        if not s: 
+            return
+            
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        exp = os.path.join(EXIT_DIR, f"{p}_{ts}.png")
+        if f is not None: cv2.imwrite(exp, f)
+
+        now = datetime.datetime.now(); fee = 5000 if now.hour >= 18 else 3000
+        if self.db.get_balance(paying_user) >= fee:
+            self.db.deduct_balance(paying_user, fee)
+            self.db.end_session(p)
+            self.db.add_history_record(p, "Xe Ra (App)", -fee, now.isoformat(), note=f"Trừ {fee:,}đ từ ví {paying_user}")
+            self.set_status(f"Xe {p} ra thành công (Remote by {paying_user}) (Cam đang mở)")
+        else:
+            # Not enough money? Still keep camera open but log it
+            print(f"Tài khoản {paying_user} không đủ tiền để tự động ra bãi!")
+            
+        self.refresh_dashboard()
 
     def handle_exit(self, p, f):
         s = self.db.get_session(p)
-        if not s: messagebox.showerror("Lỗi", "Không tìm thấy xe!"); self.close_scanner(); return
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S"); exp = os.path.join(EXIT_DIR, f"{p}_{ts}.png")
+        if not s: 
+            messagebox.showerror("Lỗi", "Không tìm thấy xe trong bãi!")
+            self.close_scanner()
+            return
+
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        exp = os.path.join(EXIT_DIR, f"{p}_{ts}.png")
         if f is not None: cv2.imwrite(exp, f)
-        v = tk.Toplevel(self.root); v.title("Xác nhận xe ra"); v.geometry("700x500"); v.grab_set()
-        l = tk.Frame(v); l.pack()
+
+        v = tk.Toplevel(self.root)
+        v.title("Kiểm tra thông tin - Xác nhận xe ra")
+        v.geometry("750x450")
+        v.configure(bg="#f4f6F9")
+        v.grab_set()
+
+        lbl_tit = tk.Label(v, text=f"Biển số: {p}", font=("Segoe UI", 18, "bold"), bg="#f4f6F9")
+        lbl_tit.pack(pady=10)
+
+        img_frame = tk.Frame(v, bg="#f4f6F9")
+        img_frame.pack()
         try:
-            p1 = ImageTk.PhotoImage(Image.open(s.get("entry_image")).resize((300, 300))); tk.Label(l, image=p1, text="Vào", compound="top").pack(side="left", padx=10); l.p1 = p1
-            p2 = ImageTk.PhotoImage(Image.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)).resize((300, 300))); tk.Label(l, image=p2, text="Ra", compound="top").pack(side="left", padx=10); l.p2 = p2
+            p1 = ImageTk.PhotoImage(Image.open(s.get("entry_image")).resize((300, 200)))
+            tk.Label(img_frame, image=p1, text="Ảnh lúc VÀO", compound="top", font=("Segoe UI", 12), bg="white").pack(side="left", padx=10)
+            img_frame.p1 = p1
+            
+            p2 = ImageTk.PhotoImage(Image.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)).resize((300, 200))) if f is not None else None
+            if p2:
+                tk.Label(img_frame, image=p2, text="Ảnh lúc RA", compound="top", font=("Segoe UI", 12), bg="white").pack(side="right", padx=10)
+                img_frame.p2 = p2
         except: pass
+        
         now = datetime.datetime.now(); fee = 5000 if now.hour >= 18 else 3000
-        tk.Label(v, text=f"Phí gửi xe: {fee:,}đ", font=("Segoe UI", 14), fg="red").pack(pady=10)
-        def confirm():
-            acc = self.current_user or p
-            if self.db.get_balance(acc) >= fee:
-                self.db.deduct_balance(acc, fee); self.db.end_session(p)
-                self.db.add_history_record(p, "Xe Ra (TT)", -fee, now.isoformat(), note=f"Trừ {fee:,}đ")
-                messagebox.showinfo("OK", "Thanh toán thành công!"); self.update_journey_status(f"Xe {p} đã ra", "#6c757d"); v.destroy(); self.close_scanner()
-            else: messagebox.showwarning("!", "Không đủ tiền!")
-        tk.Button(v, text="Thanh toán", bg="green", fg="white", command=confirm).pack(side="left", padx=100); tk.Button(v, text="Hủy", bg="red", fg="white", command=v.destroy).pack(side="right", padx=100)
+        tk.Label(v, text=f"Phí gửi xe: {fee:,}đ", font=("Segoe UI", 18, "bold"), fg="#dc3545", bg="#f4f6F9").pack(pady=10)
+
+        def confirm(method):
+            # Check if linked account can pay
+            acc = None
+            for key_acc, info in self.db.data.get("accounts", {}).items():
+                if p in self.db.get_owned_plates(key_acc) or key_acc == p:
+                    acc = key_acc
+                    break
+            
+            if acc and method == "APP":
+                if self.db.get_balance(acc) >= fee:
+                    self.db.deduct_balance(acc, fee)
+                    self.db.end_session(p)
+                    self.db.add_history_record(p, "Xe Ra (Thay toán ví)", -fee, now.isoformat(), note=f"Trừ {fee:,}đ vào ví {acc}")
+                    self.set_status(f"Xe {p} ra thành công (TT Ví)")
+                else: 
+                    messagebox.showwarning("!", f"Tài khoản {acc} không đủ tiền, thu tiền mặt!")
+                    return
+            else:
+                self.db.end_session(p)
+                self.db.add_history_record(p, "Xe Ra (Tiền mặt)", -fee, now.isoformat(), note=f"Thu {fee:,}đ tiền mặt")
+                self.set_status(f"Xe {p} ra thành công (Tiền mặt)")
+
+            v.destroy()
+            self.close_scanner()
+            self.refresh_dashboard()
+
+        bf = tk.Frame(v, bg="#f4f6F9")
+        bf.pack(pady=10)
+        tk.Button(bf, text="Thu tiền qua APP (Ví)", font=("Segoe UI", 12), bg="#007bff", fg="white", padx=10, command=lambda: confirm("APP")).pack(side="left", padx=10)
+        tk.Button(bf, text="Thu Tiền Mặt", font=("Segoe UI", 12), bg="#28a745", fg="white", padx=10, command=lambda: confirm("CASH")).pack(side="left", padx=10)
+        tk.Button(bf, text="Hủy", font=("Segoe UI", 12), bg="#6c757d", fg="white", padx=10, command=v.destroy).pack(side="left", padx=10)
 
     def close_scanner(self):
         self._stop_capture.set(); self._stop_ocr.set(); 
         if self._cap: self._cap.release(); self._cap = None
         if hasattr(self, 'scan_win') and self.scan_win.winfo_exists(): self.scan_win.destroy()
+

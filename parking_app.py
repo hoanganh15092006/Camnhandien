@@ -1,7 +1,7 @@
 import tkinter as tk
-from ui.parking_app_ui import MobileParkingApp
+from ui.parking_app_ui import ManagerParkingApp
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = MobileParkingApp(root)
+    app = ManagerParkingApp(root)
     root.mainloop()

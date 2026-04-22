@@ -28,10 +28,6 @@ Camnhandien/
 
 
 
-
-
-
-
 Dưới đây là các bước để cài đặt môi trường từ đầu (cho máy tính chưa có cài đặt gì) và sử dụng hệ thống: **Nhận diện biển số (Core)** và **Ứng dụng quản lý bãi xe (GUI)**.
 
 ---
@@ -86,26 +82,57 @@ Trước khi chạy, máy tính của bạn cần được cài đặt Python (p
 
 ---
 
-## 🚀 2. Khởi chạy Ứng dụng
+## 🚀 2. Khởi chạy Ứng dụng Desktop (PC)
 
-Sau khi đã hoàn tất cài đặt môi trường `venv`, bạn có hai lựa chọn để chạy phần mềm. Các lệnh dưới đây sử dụng đường dẫn Python trực tiếp trong môi trường ảo của dự án (`venv`) để đảm bảo các lỗi về thư viện không xảy ra.
+Sau khi đã hoàn tất cài đặt môi trường `venv`, bạn có hai lựa chọn để chạy phần mềm trên máy tính:
 
 ### Lựa chọn 1: Chạy đồng thời cả 2 màn hình bằng 1 lệnh (Git Bash)
-Nếu bạn đang sử dụng Git Bash, bạn có thể mở cả ứng dụng xử lý ảnh (`main.py`) và ứng dụng quản lý bãi xe (`parking_app.py`) chỉ với một dòng lệnh ở thư mục dự án:
+Mở ứng dụng nhận diện (`main.py`) và ứng dụng quản lý bãi xe (`parking_app.py`) với một lệnh:
 ```bash
 python main.py & python parking_app.py
 ```
 
+### Lựa chọn 2: Chạy độc lập
+- Nhận diện biển số: `python main.py`
+- Quản trị bãi đỗ xe: `python parking_app.py`
 
+---
 
-## ℹ Các tính năng chính của Parking App:
-- **AI Detection**: Tích hợp mô hình YOLO (`best.pt`) để phát hiện biển số cực nhạy, kể cả khi bị nghiêng.
-- **Trang chủ**: Thực hiện Quét xe vào (IN) và Xe ra (OUT). Tích hợp trừ tiền tự động từ ví.
-- **Tra cứu**: Nhập biển số để xem lịch sử hành trình. Hỗ trợ tính năng **Lướt (Swipe)** bằng chuột trên danh sách để xem chi tiết ghi chú.
-- **Tài khoản**: Đăng ký/Đăng nhập (bằng biển số) để liên kết phương tiện và nạp tiền/quản lý ví.
+## 📱 3. Khởi chạy Ứng Dụng Khách Hàng (User App)
+
+Để mô phỏng ứng dụng của khách hàng gửi xe, hệ thống đã chuẩn bị 2 hình thức: Mở bằng Máy ảo Android (app thật) hoặc Mở bằng phần mềm giả lập trên máy tính (nhanh gọn).
+
+### Bước 3.1: Chạy API Backend (Bắt buộc)
+1. Mở Terminal mới tại thư mục `Camnhandien`.
+2. Chạy thư viện cần thiết: `pip install flask requests`
+3. Chạy máy chủ: `python api_server.py`
+*(Giữ Terminal này luôn mở)*
+
+### Bước 3.2: Sử dụng Ứng Dụng 
+
+**Tùy chọn A: Dùng App Giả lập Desktop (Khuyên dùng thử nghiệm nhanh)**
+Không cần mở Android Studio, tôi đã viết một bản mô phỏng App cực kỳ nhẹ trên máy tính.
+- Khởi động CMD/Terminal mới, chạy: `python user_app_simulator.py`
+- Giao diện đăng nhập hiện ra, bạn điền tên / biển số bất kỳ.
+- Chọn **"Nạp tiền"**.
+- Bấm mô phỏng **Quét QR Xe Vào (IN)** và **Ra (OUT)**.
+- Bạn sẽ thấy tiền bị trừ và dữ liệu được ném thẳng về `parking_app.py` và `parking_system.db`.
+
+**Tùy chọn B: Dùng App thật trên Android Studio**
+1. Mở phần mềm **Android Studio**.
+2. Chọn **File > Open** -> Thư mục: `C:\Users\Admin\CAMNHANDIENBIENSO\JavaUserApp`.
+3. Nhấn mũi tên xanh **Run** trên máy ảo (Emulator). Mọi thao tác tương tự như bản giả lập bên trên.
+
+---
+
+## ℹ Các tính năng chính của Hệ Sinh Thái:
+- **AI Detection**: Tích hợp mô hình YOLO (`best.pt`) phát hiện biển số siêu nhạy.
+- **Desktop Manager (`parking_app.py`)**: Giao diện cho bảo vệ trực ở bãi xe. Quét xe vào (IN) và Xe ra (OUT). Tích hợp trừ tiền tự động từ ví.
+- **Backend API (`api_server.py`)**: Máy chủ xử lý dữ liệu và cung cấp API REST.
+- **Android User App (`JavaUserApp`)**: App dành cho khách hàng. Đăng ký tài khoản, nạp tiền, và hiển thị **Mã QR Định Danh** cá nhân. Dùng mã QR này để tự động check-in/check-out với bãi.
 
 ### Cấu trúc file và dữ liệu lưu trữ sinh ra:
 - `best.pt`: File trọng số mô hình AI đã huấn luyện.
-- `parking_data.json`: Lưu thông tin tài khoản, số dư ví và toàn bộ lịch sử sử dụng hệ thống.
+- `parking_system.db` (trong thư mục `data`): Lưu cơ sở dữ liệu hệ thống chuẩn SQLite thay cho json.
 - `parking_sessions/`: Lưu ảnh xe lúc Vào / Ra để dễ dàng kiểm tra đối chứng khi kiểm soát bãi.
-- `plates/`: Lưu các ảnh đã cắt tự động vùng chứa biển số để debug.
+- `JavaUserApp/`: Mã nguồn viết bằng gốc **Java XML** của ứng dụng điện thoại.
