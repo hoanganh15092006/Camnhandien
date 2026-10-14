@@ -1,5 +1,40 @@
 
+<div align="center">
 
+# 🚗 Camnhandien — Smart License Plate & Automated Parking System
+
+### *Hệ thống nhận diện biển số xe thông minh & Quản lý bãi đỗ xe tự động tích hợp Ví điện tử*
+
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![YOLOv8](https://img.shields.io/badge/AI-YOLOv8-00FFFF?style=for-the-badge)](https://ultralytics.com/)
+[![EasyOCR](https://img.shields.io/badge/OCR-EasyOCR-FF6F00?style=for-the-badge)](https://github.com/JaidedAI/EasyOCR)
+[![Tkinter](https://img.shields.io/badge/GUI-Tkinter-blue?style=for-the-badge)](https://docs.python.org/3/library/tkinter.html)
+[![Android](https://img.shields.io/badge/Mobile-Android%20Java-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com/)
+[![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+
+---
+
+<p align="center">
+  <b>Giải pháp toàn diện kết hợp giữa Thị giác máy tính (AI Computer Vision), Ứng dụng Quản trị Bãi đỗ xe và App Mobile dành cho Khách hàng.</b>
+</p>
+
+</div>
+
+---
+
+## 🌟 Giới thiệu Dự án
+
+**Camnhandien** là giải pháp quản lý bãi xe thông minh khép kín, được thiết kế nhằm tối ưu hóa quy trình ra/vào bãi, tự động hóa khâu thanh toán và nâng cao trải nghiệm người dùng. 
+
+### 💡 Điểm nổi bật của hệ thống:
+- 👁️ **Thị giác máy tính (AI)**: Sử dụng mô hình **YOLOv8 custom** (`best.pt`) để phát hiện vùng biển số chính xác cao, kết hợp **EasyOCR** để đọc ký tự tự động từ camera realtime.
+- 💻 **Ứng dụng Quản trị Bãi đỗ (Desktop App)**: Giao diện trực quan dành cho bảo vệ/quản trị viên theo dõi xe **Vào (IN)** / **Ra (OUT)**, tra cứu lịch sử, đối chiếu hình ảnh chụp trực tiếp.
+- 📱 **Ứng dụng Khách hàng (Android App / Simulator)**: Cho phép người dùng đăng ký, quản lý ví điện tử, nạp tiền và quét **Mã QR Định danh** để tự động trừ tiền khi gửi xe.
+- ⚡ **Backend API**: RESTful API linh hoạt mở kết nối giữa thiết bị nhận diện tại chốt kiểm soát và ứng dụng di động của người dùng.
+
+---
+
+## 📐 Kiến trúc Hệ thống & Cấu trúc Dự án
 
 Camnhandien/
 ├── core/
